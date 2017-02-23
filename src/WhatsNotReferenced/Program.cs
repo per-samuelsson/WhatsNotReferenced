@@ -31,6 +31,11 @@ namespace WhatsNotReferenced
     public class Assets
     {
         /// <summary>
+        /// All apps running when current assets where detected.
+        /// </summary>
+        public IEnumerable<Application> Apps { get; private set; }
+
+        /// <summary>
         /// All classes not referenced
         /// </summary>
         public IEnumerable<DatabaseClass> Classes { get; private set; }
@@ -42,8 +47,17 @@ namespace WhatsNotReferenced
 
         public static Assets Detect(ClassInlusion inclusion = ClassInlusion.Default)
         {
-            var result = new Assets();
+            return new Assets().DetectApps().DetectTables().DetectColumns();
+        }
 
+        Assets DetectApps()
+        {
+            Apps = Db.Applications.Where(a => a != Application.Current);
+            return this;
+        }
+
+        Assets DetectTables()
+        {
             var classes = Db.SQL<RawView>("SELECT v FROM RawView v");
 
             // Filter on inclusion
@@ -51,29 +65,31 @@ namespace WhatsNotReferenced
 
             var classesNotReferenced = classes.Where(c =>
             {
-                // var clr = Db.SQL<ClrClass>("SELECT clr FROM ClrClass clr WHERE clr.UniqueIdentifier = ?", c.UniqueIdentifier).SingleOrDefault();
                 var clr = Db.SQL<ClrClass>("SELECT clr FROM ClrClass clr WHERE clr.Mapper = ?", c).SingleOrDefault();
                 return clr == null;
             });
 
-            result.Classes = classesNotReferenced.Select(c => new DatabaseClass() { FullName = c.FullName });
+            Classes = classesNotReferenced.Select(c => new DatabaseClass() { FullName = c.FullName });
 
-            // For columns:
-            // Get each RawColumn that is not referenced by any MappedProperty.Column
-            //
-            // If the column is part of a dropped table, it's not interesting: it's aready
-            // part of that set.
+            return this;
+        }
 
+        Assets DetectColumns()
+        {
+            var droppedTables = Classes.ToDictionary(c => c.FullName);
+            
+            // Always approach the deepest declaration. Dropping columns and their
+            // data will be cascaded.
             var columns = Db.SQL<RawColumn>("SELECT c FROM RawColumn c WHERE c.Inherited = ?", false);
+
             var columnsNotReferenced = columns.Where(c =>
             {
                 var mapped = Db.SQL<MappedProperty>("SELECT m FROM MappedProperty m WHERE m.Column = ?", c).SingleOrDefault();
-                return mapped == null;
+                return mapped == null && !droppedTables.ContainsKey(c.Table.FullName);
             });
 
-            result.FieldsAndProperties = columnsNotReferenced.Select(c => new DatabaseFieldOrProperty() { ClassFullName = c.Table.FullName, Name = c.Name });
-
-            return result;
+            FieldsAndProperties = columnsNotReferenced.Select(c => new DatabaseFieldOrProperty() { ClassFullName = c.Table.FullName, Name = c.Name });
+            return this;
         }
     }
 
@@ -86,10 +102,14 @@ namespace WhatsNotReferenced
             Handle.GET("/whatsnotreferenced", () =>
             {
                 var assets = Assets.Detect();
+
+                var apps = string.Join(Environment.NewLine, assets.Apps.Select(a => a.DisplayName));
                 var classes = string.Join(Environment.NewLine, assets.Classes.Select(c => c.FullName));
                 var fieldsAndProperties = string.Join(Environment.NewLine, assets.FieldsAndProperties.Select(c => c.ClassFullName + "." + c.Name));
 
-                var result = "Tables:";
+                var result = "Apps (exluding this):";
+                result += Environment.NewLine + apps;
+                result += Environment.NewLine + Environment.NewLine + "Tables:";
                 result += Environment.NewLine + classes;
                 result += Environment.NewLine + Environment.NewLine + "Columns:";
                 result += Environment.NewLine + fieldsAndProperties;
