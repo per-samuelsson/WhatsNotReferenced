@@ -46,7 +46,8 @@ namespace WhatsNotReferenced
                 switch (action.ToLowerInvariant())
                 {
                     case "drop":
-                        throw new NotImplementedException("Dropping will be supported soon");
+                        new DropAssetsAction(UnreferencedAssets.Detect()).Execute();
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException(action, $"Don't know how to perform action {action}");
                 }
