@@ -37,7 +37,7 @@ namespace WhatsNotReferenced
 
         UnreferencedAssets DetectTables()
         {
-            var views = Db.SQL<RawView>("SELECT v FROM RawView v");
+            var views = Db.SQL<RawView>("SELECT v FROM RawView v WHERE Updatable = ?", true);
 
             var viewsNotReferenced = views.Where(c =>
             {
@@ -56,7 +56,7 @@ namespace WhatsNotReferenced
 
             // Always approach the deepest declaration. Dropping columns and their
             // data will be cascaded.
-            var columns = Db.SQL<RawColumn>("SELECT c FROM RawColumn c WHERE c.Inherited = ?", false);
+            var columns = Db.SQL<RawColumn>("SELECT c FROM RawColumn c WHERE c.Inherited = ? AND c.Table.Updatable = ?", false, true);
 
             var columnsNotReferenced = columns.Where(c =>
             {
