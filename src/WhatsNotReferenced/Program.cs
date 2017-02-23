@@ -8,24 +8,15 @@ using Starcounter.Internal.Metadata;
 
 namespace WhatsNotReferenced
 {
-    public class DatabaseClass
+    public class UnreferencedTable
     {
         public string FullName { get; set; }
     }
 
-    public class DatabaseFieldOrProperty
+    public class UnreferencedColumn
     {
-        public string ClassFullName { get; set; }
+        public string TableName { get; set; }
         public string Name { get; set; }
-    }
-
-    public enum ClassInlusion
-    {
-        UserDefined = 1,
-        Simplified = 2,
-        Starcounter = 4,
-        Metadata = 8,
-        Default = UserDefined
     }
 
     public class Assets
@@ -36,16 +27,16 @@ namespace WhatsNotReferenced
         public IEnumerable<Application> Apps { get; private set; }
 
         /// <summary>
-        /// All classes not referenced
+        /// All tables not referenced
         /// </summary>
-        public IEnumerable<DatabaseClass> Classes { get; private set; }
+        public IEnumerable<UnreferencedTable> Tables { get; private set; }
 
         /// <summary>
-        /// All database fields/properties not referenced.
+        /// All columns not referenced.
         /// </summary>
-        public IEnumerable<DatabaseFieldOrProperty> FieldsAndProperties { get; private set; }
+        public IEnumerable<UnreferencedColumn> Columns { get; private set; }
 
-        public static Assets Detect(ClassInlusion inclusion = ClassInlusion.Default)
+        public static Assets Detect()
         {
             return new Assets().DetectApps().DetectTables().DetectColumns();
         }
@@ -58,25 +49,22 @@ namespace WhatsNotReferenced
 
         Assets DetectTables()
         {
-            var classes = Db.SQL<RawView>("SELECT v FROM RawView v");
-
-            // Filter on inclusion
-            // TODO:
-
-            var classesNotReferenced = classes.Where(c =>
+            var views = Db.SQL<RawView>("SELECT v FROM RawView v");
+            
+            var viewsNotReferenced = views.Where(c =>
             {
                 var clr = Db.SQL<ClrClass>("SELECT clr FROM ClrClass clr WHERE clr.Mapper = ?", c).SingleOrDefault();
                 return clr == null;
             });
 
-            Classes = classesNotReferenced.Select(c => new DatabaseClass() { FullName = c.FullName });
+            Tables = viewsNotReferenced.Select(c => new UnreferencedTable() { FullName = c.FullName });
 
             return this;
         }
 
         Assets DetectColumns()
         {
-            var droppedTables = Classes.ToDictionary(c => c.FullName);
+            var droppedTables = Tables.ToDictionary(c => c.FullName);
             
             // Always approach the deepest declaration. Dropping columns and their
             // data will be cascaded.
@@ -88,7 +76,7 @@ namespace WhatsNotReferenced
                 return mapped == null && !droppedTables.ContainsKey(c.Table.FullName);
             });
 
-            FieldsAndProperties = columnsNotReferenced.Select(c => new DatabaseFieldOrProperty() { ClassFullName = c.Table.FullName, Name = c.Name });
+            Columns = columnsNotReferenced.Select(c => new UnreferencedColumn() { TableName = c.Table.FullName, Name = c.Name });
             return this;
         }
     }
@@ -104,15 +92,15 @@ namespace WhatsNotReferenced
                 var assets = Assets.Detect();
 
                 var apps = string.Join(Environment.NewLine, assets.Apps.Select(a => a.DisplayName));
-                var classes = string.Join(Environment.NewLine, assets.Classes.Select(c => c.FullName));
-                var fieldsAndProperties = string.Join(Environment.NewLine, assets.FieldsAndProperties.Select(c => c.ClassFullName + "." + c.Name));
+                var tables = string.Join(Environment.NewLine, assets.Tables.Select(c => c.FullName));
+                var columns = string.Join(Environment.NewLine, assets.Columns.Select(c => c.TableName + "." + c.Name));
 
                 var result = "Apps (exluding this):";
                 result += Environment.NewLine + apps;
                 result += Environment.NewLine + Environment.NewLine + "Tables:";
-                result += Environment.NewLine + classes;
+                result += Environment.NewLine + tables;
                 result += Environment.NewLine + Environment.NewLine + "Columns:";
-                result += Environment.NewLine + fieldsAndProperties;
+                result += Environment.NewLine + columns;
 
                 return result;
             });
