@@ -9,8 +9,7 @@ namespace WhatsNotReferenced
     {
         static void Main(string[] args)
         {
-            // Eventually:
-            // args[n]: please:[action] supporting `star WhatsNotReferenced please:drop`
+            RunStartupActions(args);
 
             Handle.GET("/whatsnotreferenced", () =>
             {
@@ -29,6 +28,29 @@ namespace WhatsNotReferenced
 
                 return result;
             });
+        }
+
+        static void RunStartupActions(string[] args)
+        {
+            // Eventually:
+            // args[n]: please:[action] supporting `star WhatsNotReferenced please:drop`
+
+            var actions = args.Select(a =>
+            {
+                if (!a.StartsWith("please:")) throw new ArgumentException($"Invalid argument: {a}");
+                return a.Substring("please:".Length);
+            });
+
+            foreach (var action in actions)
+            {
+                switch (action.ToLowerInvariant())
+                {
+                    case "drop":
+                        throw new NotImplementedException("Dropping will be supported soon");
+                    default:
+                        throw new ArgumentOutOfRangeException(action, $"Don't know how to perform action {action}");
+                }
+            }
         }
     }
 }
